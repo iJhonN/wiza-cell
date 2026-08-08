@@ -46,28 +46,49 @@ export default function DashboardPage() {
     try {
       setLoading(true)
 
-      // Define início e fim do dia atual no fuso local
+      // Define início do dia atual no fuso local
       const todayStart = new Date()
       todayStart.setHours(0, 0, 0, 0)
       const todayIso = todayStart.toISOString()
 
-      // 1. Vendas de Hoje
-      // Usamos seleções seguras sem assumir foreign key estrita em caso de alias
-      const { data: salesToday, error: salesError } = await supabase
-          .from('sales')
-          .select('id, total_amount, created_at, customer_id, payment_method_id')
+      // 1. Buscar movimentações de saída (vendas) do dia atual com os relacionamentos
+      const { data: movementsToday, error: movError } = await supabase
+          .from('stock_movements')
+          .select(`
+            id,
+            quantity,
+            unit_price,
+            created_at,
+            customers(name),
+            payment_methods(name)
+          `)
+          .eq('type', 'saida')
           .gte('created_at', todayIso)
           .order('created_at', { ascending: false })
 
-      if (salesError) {
-        console.error('Erro ao buscar vendas:', salesError.message, salesError.details)
-        throw salesError
+      if (movError) {
+        console.error('Erro ao buscar movimentações de saída:', movError.message)
+        throw movError
       }
 
-      const totalToday = salesToday?.reduce((acc, sale) => acc + Number(sale.total_amount || 0), 0) || 0
-      const countToday = salesToday?.length || 0
+      // Calcular total faturado hoje e contagem de itens/pedidos
+      const totalToday = movementsToday?.reduce((acc, m) => {
+        const itemTotal = Number(m.quantity || 0) * Number(m.unit_price || 0)
+        return acc + itemTotal
+      }, 0) || 0
 
-      // 2. Alertas de Estoque Baixo
+      const countToday = movementsToday?.length || 0
+
+      // Formatar vendas recentes para exibição na tabela
+      const formattedRecentSales: RecentSale[] = (movementsToday || []).slice(0, 5).map((m: any) => ({
+        id: m.id,
+        created_at: m.created_at,
+        total_amount: Number(m.quantity || 0) * Number(m.unit_price || 0),
+        customers: m.customers,
+        payment_methods: m.payment_methods
+      }))
+
+      // 2. Alertas de Estoque Baixo (produtos com <= 3 unidades)
       const { count: lowStock, error: stockError } = await supabase
           .from('products')
           .select('*', { count: 'exact', head: true })
@@ -95,8 +116,7 @@ export default function DashboardPage() {
         totalCustomers: customersCount || 0
       })
 
-      // Atribuição básica das vendas mais recentes
-      setRecentSales((salesToday as unknown as RecentSale[])?.slice(0, 5) || [])
+      setRecentSales(formattedRecentSales)
 
     } catch (err: any) {
       console.error('Erro ao carregar indicadores do Dashboard:', err?.message || err)
@@ -160,7 +180,7 @@ export default function DashboardPage() {
                     </p>
                     <p className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
                       <TrendingUp className="w-3 h-3" />
-                      {stats.todaySalesCount} pedido(s)
+                      {stats.todaySalesCount} ítem(ns) vendido(s)
                     </p>
                   </div>
                   <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-100">
@@ -168,7 +188,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Card: Pedidos do Dia */}
+                {/* Card: Atendimentos do Dia */}
                 <div className="bg-white p-5 rounded-2xl border border-stone-200/80 shadow-sm flex items-center justify-between">
                   <div className="space-y-1">
                     <p className="text-xs font-medium text-stone-400 uppercase tracking-wider">Atendimentos</p>
@@ -176,7 +196,7 @@ export default function DashboardPage() {
                       {stats.todaySalesCount}
                     </p>
                     <p className="text-[11px] text-stone-400">
-                      Vendas finalizadas
+                      Saídas registradas
                     </p>
                   </div>
                   <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-800 flex items-center justify-center border border-amber-100">
@@ -227,7 +247,7 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-base font-bold text-stone-900">Últimas Vendas Realizadas</h2>
-                  <p className="text-xs text-stone-500">Transações de hoje no PDV e Fiado</p>
+                  <p className="text-xs text-stone-500 font-medium">Transações de hoje no PDV</p>
                 </div>
                 <Link
                     href="/movimentacoes"
