@@ -32,7 +32,6 @@ const navigation = [
     { name: 'Modelos', href: '/modelos', icon: Smartphone },
     { name: 'Movimentações', href: '/movimentacoes', icon: ArrowLeftRight },
     { name: 'Clientes', href: '/clientes', icon: Users },
-    { name: 'Vendas a Prazo', href: '/crediario', icon: CreditCard },
     { name: 'Caixa / Fechamento', href: '/caixa', icon: Receipt },
 ]
 
